@@ -30,18 +30,33 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+
+/* 这里用了#ifndef，作为一个常见的库，避免重复引用要使用这个关键字 */
 #ifndef __SDS_H
 #define __SDS_H
 
+/* 这里定义了预先分配的sds最大值是1M */
 #define SDS_MAX_PREALLOC (1024*1024)
+
+/* 这个字符串里其实大概就是 noinit ，用来全局的确认是否初始化过了 */
 const char *SDS_NOINIT;
 
 #include <sys/types.h>
 #include <stdarg.h>
 #include <stdint.h>
 
+/* 这里发现其实sds就是一个char*，其实不是利用整个结构在传递 */
 typedef char *sds;
 
+/* sdshdr分为不同长度，有5、8、16、32、64的。5没有被使用过。
+ * flags当做掩码，用来表示当前这个sds是多少位的。
+ * alloc表示分配了多少长度。
+ * len表示实际使用了多少长度。
+ * 
+ * GNU C的一大特色就是__attribute__机制。
+ * __attribute__可以设置函数属性（Function Attribute）、变量属性（Variable Attribute）和类型属性（Type Attribute）
+ * packed属性的主要目的是让编译器更紧凑地使用内存。当它用于变量时，告诉编译器该变量应该有尽可能小的对齐，也就是1字节对齐。
+ */
 /* Note: sdshdr5 is never used, we just access the flags byte directly.
  * However is here to document the layout of type 5 SDS strings. */
 struct __attribute__ ((__packed__)) sdshdr5 {
@@ -73,6 +88,7 @@ struct __attribute__ ((__packed__)) sdshdr64 {
     char buf[];
 };
 
+/* 这里定义了表示sds长度类型的掩码 */
 #define SDS_TYPE_5  0
 #define SDS_TYPE_8  1
 #define SDS_TYPE_16 2
@@ -80,12 +96,19 @@ struct __attribute__ ((__packed__)) sdshdr64 {
 #define SDS_TYPE_64 4
 #define SDS_TYPE_MASK 7
 #define SDS_TYPE_BITS 3
+/* 宏定义中的##表示连接，也就是说会根据参数粘合并调用相应的函数名。
+ * 这里的减法意思是用字符串指针减去偏移量，获得struct的指针
+ * 这两个宏的区别就是一个声明了左值一个声明了右值
+ */
 #define SDS_HDR_VAR(T,s) struct sdshdr##T *sh = (void*)((s)-(sizeof(struct sdshdr##T)));
 #define SDS_HDR(T,s) ((struct sdshdr##T *)((s)-(sizeof(struct sdshdr##T))))
+/* sdshdr5都没使用过，相关的先不看 */
 #define SDS_TYPE_5_LEN(f) ((f)>>SDS_TYPE_BITS)
 
 static inline size_t sdslen(const sds s) {
+    /* 这里通过负向的偏移量来获取flags */
     unsigned char flags = s[-1];
+    /* 通过掩码的与运算来确定当前sds的长度类型 */
     switch(flags&SDS_TYPE_MASK) {
         case SDS_TYPE_5:
             return SDS_TYPE_5_LEN(flags);
