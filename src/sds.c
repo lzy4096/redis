@@ -110,6 +110,8 @@ sds sdsnewlen(const void *init, size_t initlen) {
             break;
         }
         case SDS_TYPE_8: {
+            /* 这里要重新定义一个struct指针，因为void *sh 眼里都是连续内存，
+             * 不声明一个struct指针的话不知道怎么去读len和alloc这两个成员变量。 */
             SDS_HDR_VAR(8,s);
             sh->len = initlen;
             sh->alloc = initlen;
@@ -195,6 +197,7 @@ void sdsclear(sds s) {
     s[0] = '\0';
 }
 
+/* 这个函数是用来确保调用者调用之后有足够的空间来容下addlen长度的字节。 */
 /* Enlarge the free space at the end of the sds string so that the caller
  * is sure that after calling this function can overwrite up to addlen
  * bytes after the end of the string, plus one more byte for nul term.
@@ -214,6 +217,7 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     len = sdslen(s);
     sh = (char*)s-sdsHdrSize(oldtype);
     newlen = (len+addlen);
+    /* 如果长度小于一个界限就翻倍增长，否则就加上一个单位的 */
     if (newlen < SDS_MAX_PREALLOC)
         newlen *= 2;
     else
@@ -232,6 +236,7 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
         if (newsh == NULL) return NULL;
         s = (char*)newsh+hdrlen;
     } else {
+        /* 如果数据结构升级，就创建一个新的并删除旧的 */
         /* Since the header size changes, need to move the string forward,
          * and can't use realloc */
         newsh = s_malloc(hdrlen+newlen+1);
@@ -246,6 +251,7 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     return s;
 }
 
+/* 用来缩减字符串空间，不留多余的alloc */
 /* Reallocate the sds string so that it has no free space at the end. The
  * contained string remains not altered, but next concatenation operations
  * will require a reallocation.
@@ -301,12 +307,15 @@ size_t sdsAllocSize(sds s) {
     return sdsHdrSize(s[-1])+alloc+1;
 }
 
+/* 返回struct结构体的指针，通常情况下用的sds结构是里面string buffer的指针 */
 /* Return the pointer of the actual SDS allocation (normally SDS strings
  * are referenced by the start of the string buffer). */
 void *sdsAllocPtr(sds s) {
     return (void*) (s-sdsHdrSize(s[-1]));
 }
 
+/* 增加len的长度，减少alloc的长度。
+ * 这个函数用来在使用sdsMakeRoomFor()并写一些东西后需要调整长度的时候用 */
 /* Increment the sds length and decrements the left free space at the
  * end of the string according to 'incr'. Also set the null term
  * in the new end of the string.
@@ -389,6 +398,7 @@ sds sdsgrowzero(sds s, size_t len) {
     return s;
 }
 
+/* 给s末尾添加len长度的字符串t */
 /* Append the specified binary-safe string pointed by 't' of 'len' bytes to the
  * end of the specified sds string 's'.
  *
