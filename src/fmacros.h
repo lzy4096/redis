@@ -27,6 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
+/* 这里主要是判断和平台有关的宏 */
 #ifndef _REDIS_FMACRO_H
 #define _REDIS_FMACRO_H
 

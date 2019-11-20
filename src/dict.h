@@ -38,12 +38,18 @@
 #ifndef __DICT_H
 #define __DICT_H
 
+/* 这个标志位应该是用来判断当前有没有在进行rehash的 */
 #define DICT_OK 0
 #define DICT_ERR 1
 
+/* 这个暂时不知道干啥用的 */
 /* Unused arguments generate annoying warnings... */
 #define DICT_NOTUSED(V) ((void) V)
 
+/* 这个dictEntry是字典节点
+ * key是key
+ * value是v结构，可以是四种类型之一
+ * next是指向下一个节点的，可以看出Redis使用开链法解决哈希冲突 */
 typedef struct dictEntry {
     void *key;
     union {
@@ -55,6 +61,7 @@ typedef struct dictEntry {
     struct dictEntry *next;
 } dictEntry;
 
+/* 这个dicttype是指可以自定义多态字典 */
 typedef struct dictType {
     uint64_t (*hashFunction)(const void *key);
     void *(*keyDup)(void *privdata, const void *key);
@@ -64,6 +71,8 @@ typedef struct dictType {
     void (*valDestructor)(void *privdata, void *obj);
 } dictType;
 
+/* dictht是哈希表结构，真正的哈希表是二维数组。
+ * 每个字典有两个哈希表，为了rehash */
 /* This is our hash table structure. Every dictionary has two of this as we
  * implement incremental rehashing, for the old to the new table. */
 typedef struct dictht {
@@ -97,6 +106,7 @@ typedef struct dictIterator {
 typedef void (dictScanFunction)(void *privdata, const dictEntry *de);
 typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref);
 
+/* 哈希表初识的大小是4 */
 /* This is the initial size of every hash table */
 #define DICT_HT_INITIAL_SIZE     4
 
@@ -181,6 +191,7 @@ unsigned long dictScan(dict *d, unsigned long v, dictScanFunction *fn, dictScanB
 uint64_t dictGetHash(dict *d, const void *key);
 dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash);
 
+/* 这些额外的不知道在哪里定义的 */
 /* Hash table types */
 extern dictType dictTypeHeapStringCopyKey;
 extern dictType dictTypeHeapStrings;

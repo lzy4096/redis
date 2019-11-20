@@ -51,6 +51,9 @@
 #include <assert.h>
 #endif
 
+
+/* 这个dict_can_resize是rehash是否开启的标志位
+ * 注意：并不是把rehash关闭后就会立刻停止所有的rehash操作。 */
 /* Using dictEnableResize() / dictDisableResize() we make possible to
  * enable/disable resizing of the hash table as needed. This is very important
  * for Redis, as we use copy-on-write and don't want to move too much memory
@@ -73,6 +76,7 @@ static int _dictInit(dict *ht, dictType *type, void *privDataPtr);
 
 static uint8_t dict_hash_function_seed[16];
 
+/* 设置哈希seed */
 void dictSetHashFunctionSeed(uint8_t *seed) {
     memcpy(dict_hash_function_seed,seed,sizeof(dict_hash_function_seed));
 }
@@ -81,6 +85,7 @@ uint8_t *dictGetHashFunctionSeed(void) {
     return dict_hash_function_seed;
 }
 
+/* 默认的哈希函数是siphash，在siphash.c中 */
 /* The default hashing function uses SipHash implementation
  * in siphash.c. */
 
