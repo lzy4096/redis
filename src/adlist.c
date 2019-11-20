@@ -201,6 +201,7 @@ void listReleaseIterator(listIter *iter) {
     zfree(iter);
 }
 
+/* 把迭代器指向开头 */
 /* Create an iterator in the list private iterator structure */
 void listRewind(list *list, listIter *li) {
     li->next = list->head;
@@ -307,6 +308,7 @@ listNode *listSearchKey(list *list, void *key)
     return NULL;
 }
 
+/* 按照下标寻找链表节点 */
 /* Return the element at the specified zero-based index
  * where 0 is the head, 1 is the element next to head
  * and so on. Negative integers are used in order to count

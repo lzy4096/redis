@@ -31,6 +31,8 @@
 #ifndef __ADLIST_H__
 #define __ADLIST_H__
 
+/* Redis中的双向链表和Linux内核链表很相似，都是把链表结构定义在自定义struct中
+ * 这里存在一个问题就是怎么把链表结构套进自定义结构里，等看到具体实现了回这里补充。 */
 /* Node, List, and Iterator are the only data structures used currently. */
 
 typedef struct listNode {
