@@ -94,7 +94,7 @@ uint64_t siphash_nocase(const uint8_t *in, const size_t inlen, const uint8_t *k)
 
 uint64_t dictGenHashFunction(const void *key, int len) {
     return siphash(key,len,dict_hash_function_seed);
-}
+} 
 
 uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len) {
     return siphash_nocase(buf,len,dict_hash_function_seed);
@@ -102,6 +102,7 @@ uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len) {
 
 /* ----------------------------- API implementation ------------------------- */
 
+/* Reset就是在初始化前把成员都清零 */
 /* Reset a hash table already initialized with ht_init().
  * NOTE: This function should only be called by ht_destroy(). */
 static void _dictReset(dictht *ht)
@@ -148,9 +149,11 @@ int dictResize(dict *d)
     return dictExpand(d, minimal);
 }
 
+/* 扩展或者创建一个哈希表 */
 /* Expand or create the hash table */
 int dictExpand(dict *d, unsigned long size)
 {
+    /* 如果在rehash过程中或者参数size小于哈希表中的元素数量，不继续进行 */
     /* the size is invalid if it is smaller than the number of
      * elements already inside the hash table */
     if (dictIsRehashing(d) || d->ht[0].used > size)
@@ -168,6 +171,7 @@ int dictExpand(dict *d, unsigned long size)
     n.table = zcalloc(realsize*sizeof(dictEntry*));
     n.used = 0;
 
+    /* 如果是新创建了一个哈希表，就只初始化ht[0] */
     /* Is this the first initialization? If so it's not really a rehashing
      * we just set the first hash table so that it can accept keys. */
     if (d->ht[0].table == NULL) {
@@ -181,6 +185,11 @@ int dictExpand(dict *d, unsigned long size)
     return DICT_OK;
 }
 
+/* 假设rehash会执行N步。如果还需要rehash的话返回1。否则返回0。
+ * 一次rehash只移动一个bucket。当然，一个bucket上不止有1个key。
+ * 因为有的bucket上是空的，所以这个函数不保证一次仅仅访问一个桶。
+ * 但是最多只会访问参数n*10个桶，否则这个函数做的工作就不知道有多少了，
+ * 就会在这个地方阻塞住。*/
 /* Performs N steps of incremental rehashing. Returns 1 if there are still
  * keys to move from the old to the new hash table, otherwise 0 is returned.
  *
@@ -242,6 +251,8 @@ long long timeInMilliseconds(void) {
     return (((long long)tv.tv_sec)*1000)+(tv.tv_usec/1000);
 }
 
+/* 类似于Python里的装饰器，外面加了一个计时函数。
+ * 每次时间片没用完的话就一直rehash。*/
 /* Rehash for an amount of time between ms milliseconds and ms+1 milliseconds */
 int dictRehashMilliseconds(dict *d, int ms) {
     long long start = timeInMilliseconds();
@@ -253,7 +264,7 @@ int dictRehashMilliseconds(dict *d, int ms) {
     }
     return rehashes;
 }
-
+/***************************** bookmark *********************************/
 /* This function performs just a step of rehashing, and only if there are
  * no safe iterators bound to our hash table. When we have iterators in the
  * middle of a rehashing we can't mess with the two hash tables otherwise
