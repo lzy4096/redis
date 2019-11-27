@@ -264,7 +264,9 @@ int dictRehashMilliseconds(dict *d, int ms) {
     }
     return rehashes;
 }
-/***************************** bookmark *********************************/
+/***************************** bookmark1125 *******************************/
+/* 在每一个写改删查的函数里都会添加这个_dictRehashStep函数.
+ * 在每一次的写改删查时捎带着就rehash一点,把工作分散到每一次的访问中做. */
 /* This function performs just a step of rehashing, and only if there are
  * no safe iterators bound to our hash table. When we have iterators in the
  * middle of a rehashing we can't mess with the two hash tables otherwise
@@ -287,6 +289,9 @@ int dictAdd(dict *d, void *key, void *val)
     return DICT_OK;
 }
 
+/* 这个函数是底层的添加或查找函数。
+ * 这个函数添加哈希表中一个slot的一个dictEntry但是不设置值。
+ * 返回dictEntry结构，由上层函数设置值。 */
 /* Low level add or find:
  * This function adds the entry but instead of setting a value returns the
  * dictEntry structure to the user, that will make sure to fill the value
@@ -313,11 +318,15 @@ dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing)
 
     if (dictIsRehashing(d)) _dictRehashStep(d);
 
+    /* 这个函数在983行
+     * 获得新元素对应的下标,如果元素存在返回-1 */
     /* Get the index of the new element, or -1 if
      * the element already exists. */
     if ((index = _dictKeyIndex(d, key, dictHashKey(d,key), existing)) == -1)
         return NULL;
 
+    /* 新添加的元素会放在链表的第一个位置.
+     * 因为作者认为新添加的元素在之后一定时间内会更频繁的被访问到. */
     /* Allocate the memory and store the new entry.
      * Insert the element in top, with the assumption that in a database
      * system it is more likely that recently added entries are accessed
@@ -350,6 +359,8 @@ int dictReplace(dict *d, void *key, void *val)
         return 1;
     }
 
+    /* 考虑到新值和旧值可能一样的情况,并且有引用计数的情况下.
+     * 必须先增加新值,再释放旧值.反过来的话会发生错误. */
     /* Set the new value and free the old one. Note that it is important
      * to do that in this order, as the value may just be exactly the same
      * as the previous one. In this context, think to reference counting,
@@ -409,17 +420,28 @@ static dictEntry *dictGenericDelete(dict *d, const void *key, int nofree) {
             prevHe = he;
             he = he->next;
         }
+        /* 如果没在rehash的话只要查找ht[0]就够了
+         * 所以break出去,不再查找ht[1] */
         if (!dictIsRehashing(d)) break;
     }
     return NULL; /* not found */
 }
 
+/* 在底层的删除函数上包一层想要的返回值就会封装的很好.
+ * 比如这里返回DICT_OK或者DICT_ERR就很好的表达了意思. */
 /* Remove an element, returning DICT_OK on success or DICT_ERR if the
  * element was not found. */
 int dictDelete(dict *ht, const void *key) {
     return dictGenericDelete(ht,key,0) ? DICT_OK : DICT_ERR;
 }
 
+/* unlink函数通过在删除函数的参数中加一个nofree开关就可以查找到对应节点,
+ * 然后移出链表,并且返回这个节点,达到unlink的效果.
+ * 这个unlink函数的使用场景类似于右值(将忘值).
+ * 已经不想被其他人访问到了,但是在删除前还需要做一些工作.
+ * 就可以先移出链表,做一些事情,然后再单独释放节点.
+ * 而且会单独添加一个单独释放节点的函数.
+ * 避免了释放前还需要再查找一遍的消耗. */
 /* Remove an element from the table, but without actually releasing
  * the key, value and dictionary entry. The dictionary entry is returned
  * if the element was found (and unlinked from the table), and the user
@@ -453,7 +475,7 @@ void dictFreeUnlinkedEntry(dict *d, dictEntry *he) {
     dictFreeVal(d, he);
     zfree(he);
 }
-
+/***************************** bookmark1127 18:00 *******************************/
 /* Destroy an entire dictionary */
 int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     unsigned long i;
@@ -462,6 +484,7 @@ int _dictClear(dict *d, dictht *ht, void(callback)(void *)) {
     for (i = 0; i < ht->size && ht->used > 0; i++) {
         dictEntry *he, *nextHe;
 
+        /* 如果i大于了int的表示范围,就说明当前数据是privdata(?) */
         if (callback && (i & 65535) == 0) callback(d->privdata);
 
         if ((he = ht->table[i]) == NULL) continue;
@@ -517,6 +540,12 @@ void *dictFetchValue(dict *d, const void *key) {
     return he ? dictGetVal(he) : NULL;
 }
 
+
+/* 指纹是一个64位的数字,代表着一个dict在给定时刻的状态.
+ * 指纹是一些dict属性异或在一起产生的.
+ * 当一个不安全的迭代器被初始化时,我们获得这个dict的指纹.
+ * 并且在在这个不安全的迭代器销毁前检查指纹.
+ * 如果两个指纹不一致代表这个不安全的迭代器的使用者有违禁操作. */
 /* A fingerprint is a 64 bit number that represents the state of the dictionary
  * at a given time, it's just a few dict properties xored together.
  * When an unsafe iterator is initialized, we get the dict fingerprint, and check
@@ -554,7 +583,7 @@ long long dictFingerprint(dict *d) {
     }
     return hash;
 }
-
+/***************************** bookmark1127 19:00 *******************************/
 dictIterator *dictGetIterator(dict *d)
 {
     dictIterator *iter = zmalloc(sizeof(*iter));
