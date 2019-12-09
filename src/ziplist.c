@@ -15,17 +15,23 @@
  *
  * <zlbytes> <zltail> <zllen> <entry> <entry> ... <entry> <zlend>
  *
+ * 注意：所有的区域都是小端存储的，除非特殊说明。
  * NOTE: all fields are stored in little endian, if not specified otherwise.
  *
+ * zlbytes表示这个ziplist使用了多少字节。包括前面zlbytes这4个字节。
+ * 有这个节点之后就不需要通过遍历来resize整个结构了。
  * <uint32_t zlbytes> is an unsigned integer to hold the number of bytes that
  * the ziplist occupies, including the four bytes of the zlbytes field itself.
  * This value needs to be stored to be able to resize the entire structure
  * without the need to traverse it first.
  *
+ * zltail存的是最后一个节点的偏移量。
+ * 有这个节点之后就不需要通过遍历来弹出位于后边的那些节点了。
  * <uint32_t zltail> is the offset to the last entry in the list. This allows
  * a pop operation on the far side of the list without the need for full
  * traversal.
  *
+ * zllen
  * <uint16_t zllen> is the number of entries. When there are more than
  * 2^16-2 entries, this value is set to 2^16-1 and we need to traverse the
  * entire list to know how many items it holds.
@@ -37,6 +43,9 @@
  * ZIPLIST ENTRIES
  * ===============
  *
+ * 每一个压缩链表中的节点都有两块表示信息的元数据，放在节点的前头。
+ * 第一个是前一个节点的长度，有了这个信息就可以从后向前遍历。
+ * 第二个表示的是节点的encoding，代表节点内容是整数还是string，如果是string的话是多长的string。
  * Every entry in the ziplist is prefixed by metadata that contains two pieces
  * of information. First, the length of the previous entry is stored to be
  * able to traverse the list from back to front. Second, the entry encoding is
@@ -46,12 +55,18 @@
  *
  * <prevlen> <encoding> <entry-data>
  *
+ * 有时encoding数据还代表着节点内容本身，像是表示小整数的时候，我们稍后会见到。
+ * 在这种情况下，就没有表示内容的部分了。
  * Sometimes the encoding represents the entry itself, like for small integers
  * as we'll see later. In such a case the <entry-data> part is missing, and we
  * could have just:
  *
  * <prevlen> <encoding>
- *
+ * 
+ * 表示前一个节点长度的数据块，<prevlen>是这样设计的：
+ * 如果前一个节点小于254字节，就只会使用1个字节，用8位无符号整数代表长度。
+ * 当前一个节点大于254字节时，就会使用5个字节，首字节会设置成FE（254），代表长度大于254。
+ * 剩余的4字节表示前一个节点真正的长度。
  * The length of the previous entry, <prevlen>, is encoded in the following way:
  * If this length is smaller than 254 bytes, it will only consume a single
  * byte representing the length as an unsinged 8 bit integer. When the length
@@ -68,6 +83,10 @@
  *
  * 0xFE <4 bytes unsigned little endian prevlen> <encoding> <entry>
  *
+ * encoding的区域取决于节点内容。
+ * 当节点存的是string时，encoding第一个字节的前两位代表着string的长度。
+ * 11代表着节点存的是整数。紧跟着的两位代表着存的是哪种整数。
+ * 接下来会介绍不同种类的encoding。
  * The encoding field of the entry depends on the content of the
  * entry. When the entry is a string, the first 2 bits of the encoding first
  * byte will hold the type of encoding used to store the length of the string,
@@ -78,33 +97,46 @@
  * to determine the kind of entry.
  *
  * |00pppppp| - 1 byte
+ *      00表示小于63比特（6位）的字符串，encoding占1字节。用encoding中省下的6位就可以表示string的长度。
  *      String value with length less than or equal to 63 bytes (6 bits).
  *      "pppppp" represents the unsigned 6 bit length.
  * |01pppppp|qqqqqqqq| - 2 bytes
+ *      01表示小于16383比特（14位）的字符串，encoding占2字节。14位的表示长度的数字是用大端存储的。
  *      String value with length less than or equal to 16383 bytes (14 bits).
  *      IMPORTANT: The 14 bit number is stored in big endian.
  * |10000000|qqqqqqqq|rrrrrrrr|ssssssss|tttttttt| - 5 bytes
+ *      10表示大于16383比特（14位）的字符串，encoding占5字节。
+ *      第一个字节中剩余的6位置零。长度由后面紧跟的4字节表示。用大端存储。
  *      String value with length greater than or equal to 16384 bytes.
  *      Only the 4 bytes following the first byte represents the length
  *      up to 32^2-1. The 6 lower bits of the first byte are not used and
  *      are set to zero.
  *      IMPORTANT: The 32 bit number is stored in big endian.
  * |11000000| - 3 bytes
+ *      11表示整数。后6位全零表示有符号16位。
  *      Integer encoded as int16_t (2 bytes).
  * |11010000| - 5 bytes
+ *      11表示整数。后6位的数字是32表示有符号32位。
  *      Integer encoded as int32_t (4 bytes).
  * |11100000| - 9 bytes
+ *      11表示整数。后6位的数字是64表示有符号64位。
  *      Integer encoded as int64_t (8 bytes).
  * |11110000| - 4 bytes
+ *      11表示整数。后六位的数字是64+32表示有符号24位。
  *      Integer encoded as 24 bit signed (3 bytes).
  * |11111110| - 2 bytes
+ *      11表示整数，后6位的数字是127表示有符号8位。
  *      Integer encoded as 8 bit signed (1 byte).
  * |1111xxxx| - (with xxxx between 0000 and 1101) immediate 4 bit integer.
+ *      小整数的情况下，前4位是1，后四位代表着content是1-13。
+ *      因为0000被3字节整数用了。1111被尾结点用了。所以1-13可以用。
  *      Unsigned integer from 0 to 12. The encoded value is actually from
  *      1 to 13 because 0000 and 1111 can not be used, so 1 should be
  *      subtracted from the encoded 4 bit value to obtain the right value.
  * |11111111| - End of ziplist special entry.
+ *      全1，也就是0XFF，表示尾结点。
  *
+ * 像ziplist的header一样，所有的整数都是小端排序的。除非代码在大端机器上运行。
  * Like for the ziplist header, all the integers are represented in little
  * endian byte order, even when this code is compiled in big endian systems.
  *
